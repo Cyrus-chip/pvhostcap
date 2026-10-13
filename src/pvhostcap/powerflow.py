@@ -52,7 +52,7 @@ def check_violations(
     vmin: float = 0.90,
     line_limit: float = 100.0,
     trafo_limit: float = 100.0,
-    kinds=("overvoltage", "line_overload", "trafo_overload"),
+    kinds: tuple = ("overvoltage", "line_overload", "trafo_overload"),
 ) -> list:
     """Check a *solved* case against operating limits.
 
@@ -62,6 +62,11 @@ def check_violations(
     ``kinds=("overvoltage", "undervoltage", "line_overload",
     "trafo_overload")`` for a full operating-point audit instead.
     """
+    valid_kinds = {"overvoltage", "undervoltage", "line_overload", "trafo_overload"}
+    unknown = [k for k in kinds if k not in valid_kinds]
+    if unknown:
+        raise ValueError(f"unknown violation kinds: {unknown}. "
+                         f"Valid kinds are: {sorted(valid_kinds)}")
     out: list = []
     if "overvoltage" in kinds:
         bad = net.res_bus[net.res_bus.vm_pu > vmax]

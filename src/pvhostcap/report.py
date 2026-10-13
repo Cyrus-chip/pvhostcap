@@ -37,9 +37,16 @@ def summarize_locational(net, loc: dict) -> str:
     return "Locational hosting capacity (PV at that bus alone):\n" + "\n".join(rows)
 
 
-def summarize_comparison(comp: dict) -> str:
-    base = comp["none"].hc_kw_total
-    rows = ["Mitigation comparison (system HC):"]
+def summarize_comparison(comp: dict, baseline: str = "none") -> str:
+    """One-line-per-strategy HC table with % gain vs the baseline strategy.
+
+    ``baseline`` names the strategy to compare against; it defaults to
+    ``"none"`` and falls back to the first strategy in ``comp`` when that
+    key is absent, so the table never crashes on a custom strategy set.
+    """
+    base_key = baseline if baseline in comp else next(iter(comp))
+    base = comp[base_key].hc_kw_total
+    rows = [f"Mitigation comparison (system HC, baseline: {base_key}):"]
     for name, res in comp.items():
         gain = (res.hc_kw_total / base - 1.0) * 100.0 if base > 0 else 0.0
         rows.append(f"  {name:>15}: {res.hc_kw_total:7.2f} kW   ({gain:+.1f}% vs baseline)")

@@ -11,11 +11,18 @@ from dataclasses import dataclass, field
 
 import pandapower as pp
 
-from pvhostcap.powerflow import binding_violation, check_violations, run_case
+from pvhostcap.powerflow import (
+    Violation,
+    binding_violation,
+    check_violations,
+    run_case,
+)
 
 __all__ = [
     "HostingCapacityResult",
     "evaluate",
+    "connection_check",
+    "resolve_bus",
     "system_hosting_capacity",
     "locational_hosting_capacity",
 ]
@@ -62,9 +69,40 @@ def evaluate(net_template, pv_kw: dict, mitigation=None, **limits) -> list:
     if mitigation is not None:
         mitigation(net, sgens)
     if not run_case(net):
-        from pvhostcap.powerflow import Violation
         return [Violation("non_converged", "load flow", 1.0, 1.0)]
     return check_violations(net, **limits)
+
+
+def resolve_bus(net_template, name_or_idx) -> int:
+    """Resolve a bus name (str) or pandapower bus index (int) to a bus index.
+
+    Engineers think in names ("LV4"), not integer indices. Raises
+    ValueError for unknown or ambiguous names.
+    """
+    if isinstance(name_or_idx, str):
+        matches = net_template.bus.index[net_template.bus.name == name_or_idx].tolist()
+        if not matches:
+            known = sorted(net_template.bus.name.dropna().unique().tolist())
+            raise ValueError(f"no bus named {name_or_idx!r}. "
+                             f"Known buses: {known}")
+        if len(matches) > 1:
+            raise ValueError(f"ambiguous bus name {name_or_idx!r}: "
+                             f"{len(matches)} buses share it")
+        return int(matches[0])
+    return int(name_or_idx)
+
+
+def connection_check(net_template, bus, pv_kw: float, **limits) -> tuple:
+    """Answer the DSO's everyday question: can this bus take ``pv_kw`` kW of new PV?
+
+    ``bus`` may be a bus name (``"LV4"``) or a pandapower bus index.
+    Returns ``(approved, violations)`` where ``approved`` is True when the
+    allocation produces no violations. This is a thin wrapper over
+    :func:`evaluate` for the single-bus connection-offer case.
+    """
+    idx = resolve_bus(net_template, bus)
+    violations = evaluate(net_template, {idx: pv_kw}, **limits)
+    return (not violations, violations)
 
 
 def _bisect(feasible, hi_start: float = 1.0, tol: float = 0.05,
@@ -109,8 +147,12 @@ def system_hosting_capacity(
     Every bus in ``load_buses`` gets the same PV size; bisection finds the
     largest size with zero violations. Returns the HC point plus the
     binding violation evaluated just above it.
+
+    Raises ValueError if ``load_buses`` is empty.
     """
     buses = list(load_buses)
+    if not buses:
+        raise ValueError("load_buses must contain at least one bus")
 
     def feasible(kw: float) -> bool:
         return not evaluate(net_template, {b: kw for b in buses},
@@ -144,9 +186,14 @@ def locational_hosting_capacity(
     that bus alone (all other buses at zero PV) with zero violations.
     Returns ``{bus: HostingCapacityResult}``. This is the "weak-bus map" of
     the feeder — the quantity a DSO actually needs for connection offers.
+
+    Raises ValueError if ``load_buses`` is empty.
     """
+    buses = list(load_buses)
+    if not buses:
+        raise ValueError("load_buses must contain at least one bus")
     out = {}
-    for b in load_buses:
+    for b in buses:
         def feasible(kw: float, _b=b) -> bool:
             return not evaluate(net_template, {_b: kw},
                                 mitigation=mitigation, **limits)

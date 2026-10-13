@@ -22,6 +22,7 @@ from pvhostcap import (
     build_lv_radial,
     build_mv_radial,
     compare_strategies,
+    connection_check,
     evaluate,
     locational_hosting_capacity,
     system_hosting_capacity,
@@ -78,6 +79,14 @@ def main():
     print()
     print("=== MV feeder (10 kV, 5 load buses) ===")
     print(summarize_system(res_mv))
+
+    # --- 5. Connection offer: can bus LV4 take 15 kW? -----------------------
+    print()
+    print("=== Connection check: 15 kW at LV4? ===")
+    approved, violations = connection_check(net, "LV4", 15.0)
+    print(f"  approved: {approved}")
+    for v in violations:
+        print(f"  blocks: {v}")
 
     print(f"\nFigures saved to {OUT}/")
 

@@ -24,6 +24,18 @@ import pandapower as pp
 __all__ = ["build_lv_radial", "build_mv_radial"]
 
 
+def _check_feeder_args(n_buses: int, seg_km: float, load_kw: float, pf: float) -> None:
+    """Validate the shared numeric arguments of the feeder builders."""
+    if not isinstance(n_buses, int) or isinstance(n_buses, bool) or n_buses < 1:
+        raise ValueError(f"n_buses must be a positive integer, got {n_buses!r}")
+    if not seg_km > 0:
+        raise ValueError(f"seg_km must be positive, got {seg_km!r}")
+    if not load_kw > 0:
+        raise ValueError(f"load_kw must be positive, got {load_kw!r}")
+    if not 0.0 < pf <= 1.0:
+        raise ValueError(f"pf must be in (0, 1], got {pf!r}")
+
+
 def build_lv_radial(
     n_buses: int = 6,
     seg_km: float = 0.15,
@@ -31,13 +43,17 @@ def build_lv_radial(
     pf: float = 0.95,
     trafo_std: str = "0.4 MVA 10/0.4 kV",
     cable_std: str = "NAYY 4x50 SE",
-):
+) -> tuple:
     """Build a small 0.4 kV radial residential feeder.
 
     Topology: 10 kV slack -> MV/LV transformer -> chain of ``n_buses``
     LV buses, each with a residential load. The far-end bus is the
     voltage-critical one.
+
+    Returns ``(net, load_buses)`` where ``load_buses`` is the ordered
+    list of pandapower bus indices that may host PV.
     """
+    _check_feeder_args(n_buses, seg_km, load_kw, pf)
     net = pp.create_empty_network(name="lv_radial")
     b_mv = pp.create_bus(net, vn_kv=10.0, name="MV slack")
     pp.create_ext_grid(net, bus=b_mv, vm_pu=1.0, name="upstream grid")
@@ -66,13 +82,17 @@ def build_mv_radial(
     pf: float = 0.95,
     trafo_std: str = "25 MVA 110/10 kV",
     cable_std: str = "NA2XS2Y 1x150 RM/25 12/20 kV",
-):
+) -> tuple:
     """Build a small 10 kV radial feeder with heavier lumped loads.
 
     Topology: 110 kV slack -> HV/MV transformer -> chain of ``n_buses``
     10 kV buses. Short, chunky cables and large loads make the **head-end
     line thermal limit** bind before far-end overvoltage.
+
+    Returns ``(net, load_buses)`` where ``load_buses`` is the ordered
+    list of pandapower bus indices that may host PV.
     """
+    _check_feeder_args(n_buses, seg_km, load_kw, pf)
     net = pp.create_empty_network(name="mv_radial")
     b_hv = pp.create_bus(net, vn_kv=110.0, name="HV slack")
     pp.create_ext_grid(net, bus=b_hv, vm_pu=1.0, name="upstream grid")

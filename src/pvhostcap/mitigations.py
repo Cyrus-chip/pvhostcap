@@ -18,8 +18,11 @@ Strategies:
   lower the LV-side voltage, buying headroom for PV voltage rise.
 """
 
+import math
+
 import pandapower as pp
 
+from pvhostcap.powerflow import run_case
 from pvhostcap.sweep import system_hosting_capacity
 
 __all__ = [
@@ -37,7 +40,6 @@ def none(net, sgen_indices):
 
 def apply_fixed_pf_absorb(net, sgen_indices, pf: float = 0.95):
     """Constant power-factor absorption (Q < 0) on all PV inverters."""
-    import math
     q_per_p = math.tan(math.acos(pf))
     for i in sgen_indices:
         p_kw = net.sgen.at[i, "p_mw"] * 1000.0
@@ -55,8 +57,6 @@ def apply_voltvar(net, sgen_indices, v_deadband: float = 1.03,
     ``v_saturation``. Converges when no inverter's Q changes by more than
     ``tol`` (Mvar) between iterations.
     """
-    from pvhostcap.powerflow import run_case
-
     buses = [int(net.sgen.at[i, "bus"]) for i in sgen_indices]
     q_prev = {i: 0.0 for i in sgen_indices}
     for _ in range(max_iter):
@@ -110,7 +110,17 @@ STRATEGIES = {
 def compare_strategies(net_template, load_buses, strategies=("none", "fixed_pf_absorb",
                                                               "voltvar", "oltc"),
                        tol_kw: float = 0.05, **limits) -> dict:
-    """Run the system HC search under each named mitigation strategy."""
+    """Run the system HC search under each named mitigation strategy.
+
+    Raises a ValueError naming the unknown strategy (and the valid
+    choices) instead of a bare KeyError.
+    """
+    unknown = [s for s in strategies if s not in STRATEGIES]
+    if unknown:
+        raise ValueError(
+            f"unknown mitigation strategies: {unknown}. "
+            f"Valid choices are: {sorted(STRATEGIES)}"
+        )
     out = {}
     for name in strategies:
         out[name] = system_hosting_capacity(

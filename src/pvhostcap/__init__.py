@@ -15,8 +15,10 @@ from pvhostcap.feeders import build_lv_radial, build_mv_radial
 from pvhostcap.powerflow import check_violations, run_case
 from pvhostcap.sweep import (
     HostingCapacityResult,
+    connection_check,
     evaluate,
     locational_hosting_capacity,
+    resolve_bus,
     system_hosting_capacity,
 )
 from pvhostcap.mitigations import (
@@ -34,6 +36,8 @@ __all__ = [
     "check_violations",
     "run_case",
     "HostingCapacityResult",
+    "connection_check",
+    "resolve_bus",
     "evaluate",
     "locational_hosting_capacity",
     "system_hosting_capacity",
