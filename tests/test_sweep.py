@@ -2,10 +2,12 @@
 
 import sys
 
+import pytest
+
 sys.path.insert(0, "src")
 
 from pvhostcap.feeders import build_lv_radial, build_mv_radial
-from pvhostcap.sweep import evaluate, system_hosting_capacity
+from pvhostcap.sweep import evaluate, locational_hosting_capacity, system_hosting_capacity
 
 
 def _small_lv():
@@ -52,3 +54,35 @@ def test_tighter_vmax_lowers_hc():
     loose = system_hosting_capacity(net, load_buses, tol_kw=0.1, vmax=1.10)
     tight = system_hosting_capacity(net, load_buses, tol_kw=0.1, vmax=1.03)
     assert tight.hc_kw_per_bus < loose.hc_kw_per_bus
+
+
+def test_system_hc_rejects_non_positive_tolerance():
+    net, load_buses = _small_lv()
+    with pytest.raises(ValueError, match="tol_kw.*greater than zero"):
+        system_hosting_capacity(net, load_buses, tol_kw=0.0)
+
+
+def test_system_hc_rejects_duplicate_or_unknown_buses():
+    net, load_buses = _small_lv()
+    with pytest.raises(ValueError, match="duplicate"):
+        system_hosting_capacity(net, [load_buses[0], load_buses[0]], tol_kw=0.1)
+    with pytest.raises(ValueError, match="not present"):
+        system_hosting_capacity(net, [load_buses[0], 999], tol_kw=0.1)
+
+
+def test_locational_hc_requires_at_least_one_bus():
+    net, _ = _small_lv()
+    with pytest.raises(ValueError, match="at least one"):
+        locational_hosting_capacity(net, [], tol_kw=0.1)
+
+
+@pytest.mark.parametrize(
+    ("allocation", "message"),
+    [("negative", "non-negative"), ("unknown", "not present")],
+)
+def test_evaluate_rejects_invalid_pv_allocations(allocation, message):
+    net, load_buses = _small_lv()
+    bus = load_buses[0]
+    allocation = {bus: -1.0} if allocation == "negative" else {999: 1.0}
+    with pytest.raises(ValueError, match=message):
+        evaluate(net, allocation)

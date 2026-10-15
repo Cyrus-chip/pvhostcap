@@ -7,7 +7,10 @@ scalar per case is exact up to the tolerance.
 """
 
 import copy
-from dataclasses import dataclass, field
+import math
+from collections.abc import Mapping
+from dataclasses import dataclass
+from numbers import Real
 
 import pandapower as pp
 
@@ -48,6 +51,74 @@ def _add_pv(net, pv_kw: dict) -> list:
     return sgens
 
 
+def _bus_index(net_template):
+    """Return the bus index, with a useful error for malformed networks."""
+    try:
+        return net_template.bus.index
+    except AttributeError as exc:
+        raise TypeError(
+            "net_template must be a pandapower network with a bus table"
+        ) from exc
+
+
+def _finite_real(value, name: str) -> float:
+    """Coerce a real scalar to float and reject non-finite values."""
+    if isinstance(value, bool) or not isinstance(value, Real):
+        raise TypeError(f"{name} must be a finite real number")
+    value = float(value)
+    if not math.isfinite(value):
+        raise ValueError(f"{name} must be a finite real number")
+    return value
+
+
+def _positive_finite(value, name: str) -> float:
+    value = _finite_real(value, name)
+    if value <= 0.0:
+        raise ValueError(f"{name} must be greater than zero")
+    return value
+
+
+def _validate_load_buses(net_template, load_buses) -> list:
+    """Validate and materialize the buses participating in a sweep."""
+    if isinstance(load_buses, (str, bytes)):
+        raise TypeError("load_buses must be an iterable of bus indices")
+    try:
+        buses = list(load_buses)
+    except TypeError as exc:
+        raise TypeError("load_buses must be an iterable of bus indices") from exc
+    if not buses:
+        raise ValueError("load_buses must contain at least one bus index")
+    try:
+        has_duplicates = len(set(buses)) != len(buses)
+    except TypeError as exc:
+        raise TypeError("load_buses must contain hashable bus indices") from exc
+    if has_duplicates:
+        raise ValueError("load_buses must not contain duplicate bus indices")
+
+    bus_index = _bus_index(net_template)
+    missing = [bus for bus in buses if bus not in bus_index]
+    if missing:
+        raise ValueError(
+            f"load_buses contains bus index(es) not present in net_template: {missing}"
+        )
+    return buses
+
+
+def _validate_pv_allocation(net_template, pv_kw) -> None:
+    """Reject allocations that would otherwise be silently ignored."""
+    if not isinstance(pv_kw, Mapping):
+        raise TypeError("pv_kw must be a mapping of bus index to PV kW")
+    bus_index = _bus_index(net_template)
+    for bus, kw in pv_kw.items():
+        if bus not in bus_index:
+            raise ValueError(
+                f"pv_kw contains bus index not present in net_template: {bus!r}"
+            )
+        kw = _finite_real(kw, f"pv_kw[{bus!r}]")
+        if kw < 0.0:
+            raise ValueError(f"pv_kw[{bus!r}] must be non-negative")
+
+
 def evaluate(net_template, pv_kw: dict, mitigation=None, **limits) -> list:
     """Evaluate one PV allocation against the limits.
 
@@ -57,6 +128,9 @@ def evaluate(net_template, pv_kw: dict, mitigation=None, **limits) -> list:
     Returns the list of violations (empty = feasible). A non-converged
     load flow counts as infeasible and is reported as such.
     """
+    _validate_pv_allocation(net_template, pv_kw)
+    if mitigation is not None and not callable(mitigation):
+        raise TypeError("mitigation must be callable or None")
     net = copy.deepcopy(net_template)
     sgens = _add_pv(net, pv_kw)
     if mitigation is not None:
@@ -74,6 +148,12 @@ def _bisect(feasible, hi_start: float = 1.0, tol: float = 0.05,
     Returns (size, evaluations). ``feasible(0)`` is assumed True; if it is
     not, (0.0, n) is returned.
     """
+    hi_start = _positive_finite(hi_start, "hi_start")
+    tol = _positive_finite(tol, "tol")
+    hi_cap = _positive_finite(hi_cap, "hi_cap")
+    if hi_start > hi_cap:
+        raise ValueError("hi_start must not exceed hi_cap")
+
     n = 0
     if not feasible(0.0):
         return 0.0, 1
@@ -110,7 +190,8 @@ def system_hosting_capacity(
     largest size with zero violations. Returns the HC point plus the
     binding violation evaluated just above it.
     """
-    buses = list(load_buses)
+    buses = _validate_load_buses(net_template, load_buses)
+    tol_kw = _positive_finite(tol_kw, "tol_kw")
 
     def feasible(kw: float) -> bool:
         return not evaluate(net_template, {b: kw for b in buses},
@@ -145,8 +226,10 @@ def locational_hosting_capacity(
     Returns ``{bus: HostingCapacityResult}``. This is the "weak-bus map" of
     the feeder — the quantity a DSO actually needs for connection offers.
     """
+    buses = _validate_load_buses(net_template, load_buses)
+    tol_kw = _positive_finite(tol_kw, "tol_kw")
     out = {}
-    for b in load_buses:
+    for b in buses:
         def feasible(kw: float, _b=b) -> bool:
             return not evaluate(net_template, {_b: kw},
                                 mitigation=mitigation, **limits)

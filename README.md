@@ -1,6 +1,6 @@
 # pvhostcap
 
-[![tests: 22 passed](https://img.shields.io/badge/tests-22%20passed-brightgreen.svg)](tests/)
+[![tests: 27 passed](https://img.shields.io/badge/tests-27%20passed-brightgreen.svg)](tests/)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue.svg)](pyproject.toml)
 [![License: BSD-3-Clause](https://img.shields.io/badge/License-BSD_3--Clause-blue.svg)](LICENSE)
 
@@ -41,6 +41,10 @@ The heavyweight options exist — NREL's [disco](https://github.com/NREL/disco) 
 5. **Mitigations**: the same search with a strategy applied before each load flow — constant-PF absorption, Q(U) Volt-VAr droop (fixed-point iteration), or an OLTC tap move.
 
 Assumptions are stated up front: single worst-hour snapshot, balanced three-phase model, PV allocated per load bus (rooftop-PV screening convention). Uncertainty and time series are deliberately out of scope — see the references for those treatments.
+
+### Input validation
+
+The public sweep helpers validate screening inputs before starting a load-flow search. `load_buses` must contain at least one unique bus index that exists in the supplied pandapower network, `tol_kw` must be finite and greater than zero, and every value in an `evaluate` PV allocation must be a finite, non-negative kW value for an existing bus. Invalid inputs raise a clear `TypeError` or `ValueError` instead of being silently dropped or producing a misleading zero-capacity result. An empty allocation (`{}`) remains valid for evaluating the no-PV baseline.
 
 ## Quickstart
 
@@ -104,7 +108,7 @@ The MV feeder (10 kV, five 400 kW load buses) tells the opposite story: system H
 
 ```bash
 pip install -e ".[test]"
-pytest            # 22 tests, incl. physics checks:
+pytest            # 27 tests, incl. physics and input-validation checks:
                   # far-end bus is weakest, mitigations never hurt HC,
                   # LV feeder voltage-bound / MV feeder thermal-bound
 ```
