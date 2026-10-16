@@ -25,6 +25,7 @@ from pvhostcap.mitigations import (
     apply_voltvar,
     compare_strategies,
 )
+from pvhostcap.report import render_html_report
 
 __version__ = "0.1.0"
 
@@ -41,5 +42,6 @@ __all__ = [
     "apply_oltc_lower",
     "apply_voltvar",
     "compare_strategies",
+    "render_html_report",
     "__version__",
 ]

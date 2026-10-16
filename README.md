@@ -50,6 +50,20 @@ pip install git+https://github.com/chenyi6758-source/pvhostcap.git   # or: pip i
 python examples/quickstart.py
 ```
 
+### CLI reports
+
+After installing the package, run a built-in feeder screen without opening a
+notebook:
+
+```bash
+pvhostcap --feeder lv --output-dir report
+```
+
+This writes `report/lv-hosting-capacity.json` and
+`report/lv-hosting-capacity.html`. Use `--feeder mv`, `--no-locational`, or
+`--no-mitigations` to choose the study scope. These reports remain
+deterministic worst-hour screens, not interconnection guarantees.
+
 ```python
 from pvhostcap import (
     build_lv_radial, system_hosting_capacity,
